@@ -1,84 +1,101 @@
-<html>
-<head>
-    <title>Lainhost</title>
-<body>
-  <style>
-    * {
-      text-align: center;
-      align-items: center;
-    }
-    </style>
 <?php
-
-    function uploadFile() {
-    global $owtput;
-
-    //session_start();
-
-    //session_unset();
-    //session_destroy();
-    $file = $_FILES['file'];
-    $tmp_name = $file['tmp_name'];
-     if ($file['type'] == '') {
-        $owtput = 'ERROR: no file uploaded!';
-        return;
-     }
-    if ($file['type'] == 'image/png' || $file['type'] == 'image/jpg' || $file['type'] == 'image/jpeg') {
-        $result = 'gut';
-      } else {
-        $owtput = 'ERROR: the only supported file formats are png and jpg!';
-        return;
-      }
-
-    if ($file['type'] == 'image/png') {
-        $ext = '.png';
-      } elseif ($file['type'] == 'image/jpeg') {
-        $ext = '.jpeg';
-      } else {
-        $ext = '.jpg';
-      }
-
-      echo $file['size'];
-      if ($file['size'] > 15000000 ) {
-        echo 'ERROR: Max file size is 15 megabytes!';
-        return;
-      }
-    $characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    $string = substr(str_shuffle($characters), 0, 10);
-    $name = $string . $ext;
-    $upload_dir = 'u/';
-    $upload_file = $upload_dir . $name;
-    move_uploaded_file($tmp_name, $upload_file);
-    
-    $owtput = "Your uploaded file with type of " . $file['type'] . " should be available at https://localhost:8000/u/" . $name;
-    $filenames++;
-    header('Location: uploaded.php?message=' . urlencode($owtput));
-    exit;
-
-    }
-
-    if(array_key_exists('test',$_POST)){
-        uploadFile();
-     }
-?>
-<h1>Lainhost</h1>
-<p>The simplest PHP file-hosting service ever made</p>
-<form method="post" enctype="multipart/form-data">
-Upload your file here: <br>
-<input type="file" name="file">
-<br>
-<br>
-<input type="submit" value="Submit" name="test" id="test" value="RUN">
-</form>
-<?php
-if (isset($_FILES['file'])) {
-    
+session_start();
+if (file_exists('config.php')) {
+    require_once 'config.php';
 } else {
-    echo 'No file uploaded';
+    define('SITE_URL', 'http://localhost:8000');
+    define('MAX_FILE_SIZE', 15 * 1024 * 1024);
+    define('ALLOWED_TYPES', ['image/png', 'image/jpg', 'image/jpeg']);
+    define('UPLOAD_DIR', 'u/');
+    define('LOG_FILE', 'uploads.log');
 }
-echo $owtput;
+
+function uploadFile() {
+    global $output;
+
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        $output = 'ERROR: No file uploaded or upload failed!';
+        return;
+    }
+
+    $file = $_FILES['file'];
+
+    if (!in_array($file['type'], ALLOWED_TYPES)) {
+        $output = 'ERROR: Only PNG and JPG/JPEG formats are supported!';
+        return;
+    }
+
+    if ($file['size'] > MAX_FILE_SIZE) {
+        $output = 'ERROR: Max file size is ' . (MAX_FILE_SIZE / 1024 / 1024) . ' megabytes!';
+        return;
+    }
+
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $uniqueId = bin2hex(random_bytes(5));
+    $newFileName = $uniqueId . '.' . $ext;
+    $uploadPath = UPLOAD_DIR . $newFileName;
+
+    if (!is_dir(UPLOAD_DIR)) {
+        mkdir(UPLOAD_DIR, 0755, true);
+    }
+
+    if (!move_uploaded_file($file['tmp_name'], $uploadPath)) {
+        $output = 'ERROR: Failed to save the file. Please try again.';
+        return;
+    }
+
+    $fileUrl = SITE_URL . '/' . UPLOAD_DIR . $newFileName;
+    $output = "Your file has been uploaded successfully. It's available at: " . $fileUrl;
+
+    logUpload($newFileName, $file['type'], $file['size']);
+
+    $_SESSION['last_upload'] = $fileUrl;
+    header('Location: uploaded.php');
+    exit;
+}
+
+function logUpload($fileName, $fileType, $fileSize) {
+    $logEntry = date('Y-m-d H:i:s') . " | $fileName | $fileType | $fileSize bytes\n";
+    file_put_contents(LOG_FILE, $logEntry, FILE_APPEND);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    uploadFile();
+}
 ?>
-<br>
-<a href="https://github.com/unwireddd/lainbox">[Open Source]</a>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lainhost - Simple File Hosting</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 class="text-3xl font-bold mb-4 text-center">Lainhost</h1>
+        <p class="text-gray-600 mb-6 text-center">The simplest PHP file-hosting service ever made</p>
+        
+        <form method="post" enctype="multipart/form-data" class="space-y-4">
+            <div class="flex flex-col items-center">
+                <label for="file" class="mb-2 font-semibold">Upload your file here:</label>
+                <input type="file" name="file" id="file" class="border p-2 w-full">
+            </div>
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full">
+                Upload
+            </button>
+        </form>
+
+        <?php if (isset($output)): ?>
+            <div class="mt-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                <?php echo htmlspecialchars($output); ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="mt-6 text-center">
+            <a href="https://github.com/unwireddd/lainbox" class="text-blue-500 hover:underline">[Open Source]</a>
+        </div>
+    </div>
 </body>
 </html>
