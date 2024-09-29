@@ -9,4 +9,4 @@ sudo php -S localhost:8000
 ```
 
 # Usage
-<img src="./sample.gif"></img>
+<img src="./sample-final.gif"></img>
